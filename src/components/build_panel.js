@@ -1,4 +1,5 @@
 import Humanize from './humanize';
+import {Link} from 'react-router';
 import React from 'react';
 import TimeAgo from 'react-timeago';
 
@@ -6,6 +7,18 @@ import './build_panel.less';
 
 export default
 class BuildPanel extends React.Component {
+
+  renderParentLink(parent) {
+    const {repo} = this.props;
+    if (parent > 0) {
+      return (
+        <div>
+          <em>Parent build:</em> <Link key={parent} to={`/${repo.owner}/${repo.name}/${parent}`}># {parent}</Link>
+        </div>
+      );
+    }
+  }
+
   render() {
     const {build, job} = this.props;
 
@@ -32,6 +45,7 @@ class BuildPanel extends React.Component {
               </a>
             </div>
             <div><em>Author:</em> {build.author}</div>
+            {this.renderParentLink(build.parent)}
             <p>{environs}{build.message}</p>
           </div>
           <div>
