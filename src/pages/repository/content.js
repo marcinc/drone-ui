@@ -3,7 +3,7 @@ import BuildCard from '../../components/build_card';
 import {Link} from 'react-router';
 import PageContent from '../../components/layout/content';
 import React from 'react';
-import {events, GET_REPO, GET_BUILD_LIST} from '../../actions/events';
+import {events, GET_REPO, GET_BUILD_LIST, FILTER_BUILD_HISTORY, FILTER_BUILD_HISTORY_CLEAR} from '../../actions/events';
 
 import './index.less';
 
@@ -14,9 +14,13 @@ class Content extends React.Component {
     events.emit(GET_BUILD_LIST, {owner, name});
   }
 
+  componentWillUnmount() {
+    events.emit(FILTER_BUILD_HISTORY_CLEAR);
+  }
+
   shouldComponentUpdate(nextProps) {
-    const {repository, builds} = this.props;
-    return repository != nextProps.repository || builds != nextProps.builds;
+    const {repository, builds, state} = this.props;
+    return repository != nextProps.repository || builds != nextProps.builds || state != nextProps.state;
   }
 
   componentWillReceiveProps(nextProps) {
@@ -28,9 +32,13 @@ class Content extends React.Component {
     }
   }
 
+  onFilter(event) {
+    events.emit(FILTER_BUILD_HISTORY, event.target.value);
+  }
+
   render() {
     const {owner, name} = this.props.params;
-    let {repository, builds} = this.props;
+    let {repository, builds, state} = this.props;
 
     if (repository instanceof Error) {
       return (
@@ -60,18 +68,70 @@ class Content extends React.Component {
       );
     }
 
+    function buildFilterCriteria() {
+      const tags = ['tag', 'branch', 'author', 'status', 'event', 'deploy_to'];
+
+      var predicates = [];
+
+      var filters = state.filter.split(' ');
+      filters.forEach(f => {
+        var parts = f.split(':');
+        if(!tags.includes(parts[0]) || parts[1] === '' || parts[1] === null || parts[1] === undefined) { 
+          return; 
+        };
+
+        switch(parts[0]) {
+        case "tag":
+          predicates.push("o.event == 'tag' && o.ref.includes('refs/tags/"+parts[1]+"')");
+          break;
+        case "branch":
+        case "author":
+        case "event":
+        case "status":
+        case "deploy_to":
+          predicates.push("o."+parts[0]+".includes('"+parts[1]+"')");
+          break;
+        }
+      });
+
+      var body;
+
+      if(predicates.length > 0) {
+        body = 'return ' + predicates.join(' && ') + ';';
+      }
+
+      return new Function('o', body);
+    }
+
+    Object.filter = (obj, predicate) => 
+      Object.keys(obj)
+        .filter( key => predicate(obj[key]) )
+        .reduce( (res, key) => (res[key] = obj[key], res), {} );
+
+    if(state !== undefined && state.filter) {
+      var criteria = buildFilterCriteria();
+      if (typeof criteria === "function") {
+        builds = Object.filter(builds, criteria);
+      }
+    }
+
     return (
       <PageContent className="repository history">
+        <div className="history-search">
+          <input type="search" placeholder="Filter build history..." onChange={this.onFilter} spellCheck="off" />
+        </div>
         {Object.keys(builds).sort((a, b) => {return b - a;}).map(buildItem)}
       </PageContent>
     );
   }
+
 }
 
 export default branch((props) => {
   const {owner, name} = props.params;
   return {
     repository: ['repos', owner, name],
-    builds: ['builds', owner, name]
+    builds: ['builds', owner, name],
+    state: ['pages', 'repo_history']
   };
 }, Content);

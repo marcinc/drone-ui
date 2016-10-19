@@ -22,6 +22,8 @@ export const GET_BUILD_LOGS = 'GET_BUILD_LOGS';
 export const DEL_BUILD_LOGS = 'DEL_BUILD_LOGS';
 export const FILTER = 'FILTER';
 export const FILTER_CLEAR = 'FILTER_CLEAR';
+export const FILTER_BUILD_HISTORY = 'FILTER_BUILD_HISTORY';
+export const FILTER_BUILD_HISTORY_CLEAR = 'FILTER_BUILD_HISTORY_CLEAR';
 export const GET_TOKEN = 'GET_TOKEN';
 export const SHOW_TOKEN = 'SHOW_TOKEN';
 export const HIDE_TOKEN = 'HIDE_TOKEN';
@@ -403,6 +405,19 @@ events.on(FILTER, function(event) {
 
 events.on(FILTER_CLEAR, function() {
   tree.unset(['pages', 'repo', 'filter']);
+});
+
+events.on(FILTER_BUILD_HISTORY, function(event) {
+  const data = event.data.toLowerCase();
+  if (data === '') {
+    tree.unset(['pages', 'repo_history', 'filter']);
+  } else {
+    tree.set(['pages', 'repo_history', 'filter'], data);
+  }
+});
+
+events.on(FILTER_BUILD_HISTORY_CLEAR, function() {
+  tree.unset(['pages', 'repo_history', 'filter']);
 });
 
 events.on(CLEAR_TOAST, function() {
