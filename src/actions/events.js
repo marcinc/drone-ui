@@ -1,4 +1,5 @@
 import Emmett from 'emmett';
+import {monkey} from 'baobab';
 import Request from 'superagent';
 import {tree} from './tree';
 
@@ -22,6 +23,10 @@ export const GET_BUILD_LOGS = 'GET_BUILD_LOGS';
 export const DEL_BUILD_LOGS = 'DEL_BUILD_LOGS';
 export const FILTER = 'FILTER';
 export const FILTER_CLEAR = 'FILTER_CLEAR';
+export const BUILD_FILTER = 'BUILD_FILTER';
+export const BUILD_FILTER_CLEAR = 'BUILD_FILTER_CLEAR';
+export const BUILD_FILTER_SUGGESTIONS = 'BUILD_FILTER_SUGGESTIONS';
+export const BUILD_FILTER_SUGGESTIONS_CLEAR = 'BUILD_FILTER_SUGGESTIONS_CLEAR';
 export const GET_TOKEN = 'GET_TOKEN';
 export const SHOW_TOKEN = 'SHOW_TOKEN';
 export const HIDE_TOKEN = 'HIDE_TOKEN';
@@ -186,6 +191,91 @@ events.on(GET_BUILD_LIST, function(event) {
       builds.map(function(build) {
         tree.set(['builds', owner, name, build.number], build);
       });
+
+      // populate filter suggestions
+      (function() {
+        let terms = Object.keys(builds).map(k => builds[k]).reduce((dict, build) => {
+          dict['author:' + build.author] = true;
+          dict['branch:' + build.branch] = true;
+          dict['status:' + build.status] = true;
+          dict['event:' + build.event] = true;
+          if(build.ref.includes('tags')) {
+            dict['tag:' + build.ref.replace('refs/tags/', '')] = true;
+          }
+          if(build.deploy_to !== '') {
+            dict['deploy_to:' + build.deploy_to] = true;
+          }
+          return dict;
+        }, {});
+
+        let suggestions = Object.keys(terms)
+          .sort((a, b) => a > b)
+          .map(item => ({label:item, value:item}));
+        events.emit(BUILD_FILTER_SUGGESTIONS, {owner, name, suggestions});
+      })();
+
+      // parses filter and groups criteria by attribute
+      const filterCriteria = function(filter = '') {
+        const tags = ['tag', 'branch', 'author', 'status', 'event', 'deploy_to'];
+
+        return filter.split(';').reduce((criteria, item) => {
+          let tag = item.split(':');
+
+          if(tags.includes(tag[0])) { 
+            if(criteria.hasOwnProperty(tag[0])) {
+              criteria[tag[0]].push(tag[1]);
+            } else {
+              criteria[tag[0]] = [tag[1]];
+            }
+          }
+          return criteria;
+        }, {});
+      };
+
+      // returns filter test functions
+      const filterPredicates = function(filter) {
+        let criteria = filterCriteria(filter);
+
+        return Object.keys(criteria).reduce((tests, key) => {
+          switch(key) {
+          case 'branch':
+          case 'author':
+          case 'event':
+          case 'status':
+          case 'deploy_to':
+            tests.push(item => {
+              return criteria[key].includes(item[key]);
+            });
+            break;
+          case 'tag':
+            tests.push(item => {
+              return criteria[key].includes(item['ref'].replace('refs/tags/', ''));
+            });
+            break;
+          }
+          return tests;
+        }, []);
+      };
+
+      // sets filtered_builds monkey to dynamically select builds meeting filter criteria
+      tree.set(['filtered_builds', owner, name], monkey(
+        ['builds', owner, name],
+        ['pages', 'repo', owner, name, 'filter'],
+        function(builds, filter) {
+          let tests = filterPredicates(filter);
+          return Object.keys(builds).reduce((filtered, k) => {
+            let build = builds[k];
+            if (tests.length > 0) {
+              if (tests.every(test => test(build))) {
+                filtered[k] = build;
+              }
+            } else {
+              filtered[k] = build;
+            }
+            return filtered;
+          }, {});
+        }
+      ));
     });
 });
 
@@ -403,6 +493,34 @@ events.on(FILTER, function(event) {
 
 events.on(FILTER_CLEAR, function() {
   tree.unset(['pages', 'repo', 'filter']);
+});
+
+events.on(BUILD_FILTER, function(event) {
+  const {owner, name, value} = event.data;
+  if (value === '') {
+    tree.unset(['pages', 'repo', owner, name, 'filter']);
+  } else {
+    tree.set(['pages', 'repo', owner, name, 'filter'], value);
+  }
+});
+
+events.on(BUILD_FILTER_CLEAR, function(event) {
+  const {owner, name} = event.data;
+  tree.unset(['pages', 'repo', owner, name, 'filter']);
+});
+
+events.on(BUILD_FILTER_SUGGESTIONS, function(event) {
+  const {owner, name, suggestions} = event.data;
+  if (suggestions.length == 0) {
+    tree.unset(['pages', 'repo', owner, name, 'suggestions']);
+  } else {
+    tree.set(['pages', 'repo', owner, name, 'suggestions'], suggestions);
+  }
+});
+
+events.on(BUILD_FILTER_SUGGESTIONS_CLEAR, function(event) {
+  const {owner, name} = event.data;
+  tree.unset(['pages', 'repo', owner, name, 'suggestions']);
 });
 
 events.on(CLEAR_TOAST, function() {
