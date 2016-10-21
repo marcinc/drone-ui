@@ -24,6 +24,8 @@ export const FILTER = 'FILTER';
 export const FILTER_CLEAR = 'FILTER_CLEAR';
 export const FILTER_BUILD_HISTORY = 'FILTER_BUILD_HISTORY';
 export const FILTER_BUILD_HISTORY_CLEAR = 'FILTER_BUILD_HISTORY_CLEAR';
+export const FILTER_BUILD_HISTORY_SUGGESTIONS = 'FILTER_BUILD_HISTORY_SUGGESTIONS';
+export const FILTER_BUILD_HISTORY_SUGGESTIONS_CLEAR = 'FILTER_BUILD_HISTORY_SUGGESTIONS_CLEAR';
 export const GET_TOKEN = 'GET_TOKEN';
 export const SHOW_TOKEN = 'SHOW_TOKEN';
 export const HIDE_TOKEN = 'HIDE_TOKEN';
@@ -410,14 +412,27 @@ events.on(FILTER_CLEAR, function() {
 events.on(FILTER_BUILD_HISTORY, function(event) {
   const data = event.data.toLowerCase();
   if (data === '') {
-    tree.unset(['pages', 'repo_history', 'filter']);
+    tree.unset(['pages', 'repo', 'build_filter']);
   } else {
-    tree.set(['pages', 'repo_history', 'filter'], data);
+    tree.set(['pages', 'repo', 'build_filter'], data);
   }
 });
 
 events.on(FILTER_BUILD_HISTORY_CLEAR, function() {
-  tree.unset(['pages', 'repo_history', 'filter']);
+  tree.unset(['pages', 'repo', 'build_filter']);
+});
+
+events.on(FILTER_BUILD_HISTORY_SUGGESTIONS, function(event) {
+  const data = event.data;
+  if (data.length == 0) {
+    tree.unset(['pages', 'repo', 'build_filter_suggestions']);
+  } else {
+    tree.set(['pages', 'repo', 'build_filter_suggestions'], data);
+  }
+});
+
+events.on(FILTER_BUILD_HISTORY_SUGGESTIONS_CLEAR, function() {
+  tree.unset(['pages', 'repo', 'build_filter_suggestions']);
 });
 
 events.on(CLEAR_TOAST, function() {
