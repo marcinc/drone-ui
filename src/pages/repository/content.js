@@ -1,28 +1,39 @@
-import Select from 'react-select';
 import {branch} from 'baobab-react/higher-order';
 import BuildCard from '../../components/build_card';
 import {Link} from 'react-router';
 import PageContent from '../../components/layout/content';
 import React from 'react';
-import {events, GET_REPO, GET_BUILD_LIST, FILTER_BUILD_HISTORY, FILTER_BUILD_HISTORY_CLEAR,
-        FILTER_BUILD_HISTORY_SUGGESTIONS, FILTER_BUILD_HISTORY_SUGGESTIONS_CLEAR} from '../../actions/events';
+import Select from 'react-select';
+import {events, GET_REPO, GET_BUILD_LIST, BUILD_FILTER, BUILD_FILTER_CLEAR,
+        BUILD_FILTER_SUGGESTIONS, BUILD_FILTER_SUGGESTIONS_CLEAR} from '../../actions/events';
 
 import './index.less';
 import 'react-select/less/default.less';
 
 class Content extends React.Component {
+  constructor(props) {
+    super(props);
+
+    this.onFilter = this.onFilter.bind(this);
+    this.filterCriteria = this.filterCriteria.bind(this);
+    this.setFilterSuggestions = this.setFilterSuggestions.bind(this);
+  }
+
   componentDidMount() {
     const {owner, name} = this.props.params;
     events.emit(GET_REPO, {owner, name});
     events.emit(GET_BUILD_LIST, {owner, name});
-    if(this.props.location.query.build_filter) {
-      events.emit(FILTER_BUILD_HISTORY, this.props.location.query.build_filter);
+    // if filter is present in query string then use it
+    var value = this.props.location.query.filter;
+    if(value) {
+      events.emit(BUILD_FILTER, {owner, name, value});
     }
   }
 
   componentWillUnmount() {
-    events.emit(FILTER_BUILD_HISTORY_CLEAR);
-    events.emit(FILTER_BUILD_HISTORY_SUGGESTIONS_CLEAR);
+    const {owner, name} = this.props.params;
+    events.emit(BUILD_FILTER_CLEAR, {owner, name});
+    events.emit(BUILD_FILTER_SUGGESTIONS_CLEAR, {owner, name});
   }
 
   shouldComponentUpdate(nextProps) {
@@ -39,11 +50,19 @@ class Content extends React.Component {
     }
   }
 
-  onFilter(event) {
-    events.emit(FILTER_BUILD_HISTORY, event);
+  componentDidUpdate() {
+    const {builds, state} = this.props;
+
+    // populating build filter tag suggestions
+    if (builds && (state == undefined || state.suggestions == undefined || state.suggestions.length == 0)) {
+      this.setFilterSuggestions();
+    }
   }
 
-  populateFilterSuggestions(builds) {
+  setFilterSuggestions() {
+    const {owner, name} = this.props.params;
+    const {builds} = this.props;
+
     var dict = {};
     var item;
 
@@ -63,32 +82,33 @@ class Content extends React.Component {
 
     var suggestions = Object.keys(dict).sort((a, b) => {return a > b;});
     suggestions = suggestions.map(item => {return {label:item, value:item};});
-    events.emit(FILTER_BUILD_HISTORY_SUGGESTIONS, suggestions);
+    events.emit(BUILD_FILTER_SUGGESTIONS, {owner, name, suggestions});
   }
 
-  filterCriteria(build_filter) {
+  filterCriteria() {
+    const {state} = this.props;
     const tags = ['tag', 'branch', 'author', 'status', 'event', 'deploy_to'];
 
     var predicates = {};
 
-    var filters = build_filter.split(' ');
-    filters.forEach(f => {
-      var parts = f.split(':');
-      if(!tags.includes(parts[0]) || parts[1] === undefined) { 
+    var filters = state.filter.split(' ');
+    filters.forEach(tag => {
+      var parts = tag.split(':');
+      if(!tags.includes(parts[0])) { 
         return; 
-      };
+      }
 
       var p;
       switch(parts[0]) {
-      case 'tag':
-        p = 'o.ref.includes("refs/tags/'+parts[1]+'")';
-        break;
       case 'branch':
       case 'author':
       case 'event':
       case 'status':
       case 'deploy_to':
         p = 'o.'+parts[0]+'.includes("'+parts[1]+'")';
+        break;
+      case 'tag':
+        p = 'o.ref.includes("refs/tags/'+parts[1]+'")';
         break;
       }
 
@@ -99,16 +119,21 @@ class Content extends React.Component {
       }
     });
 
-    var body;
+    var func_body;
     if(Object.keys(predicates).length > 0) {
       var conditions = [];
       Object.keys(predicates).forEach(k => {
         conditions.push('(' + predicates[k].join(' || ') + ')');
       });
-      body = 'return ' + conditions.join(' && ') + ';';
+      func_body = 'return ' + conditions.join(' && ') + ';';
     }
 
-    return new Function('o', body);
+    return new Function('o', func_body);
+  }
+
+  onFilter(value) {
+    const {owner, name} = this.props.params;
+    events.emit(BUILD_FILTER, {owner, name, value});
   }
 
   render() {
@@ -133,25 +158,14 @@ class Content extends React.Component {
       );
     }
 
-    // populating build filter tag suggestions
-    if (builds && (state == undefined || 
-        (state.build_filter_suggestions == undefined || 
-          state.build_filter_suggestions.length == 0))) {
-      // console.log("** Building autocomplete suggestions");
-      this.populateFilterSuggestions(builds);
-    } else {
-      // console.log("stored suggestions");
-      // console.log(state.build_filter_suggestions);
-    }
-
-    // filtering the build with whatever was set in build_filter
-    if(state !== undefined && state.build_filter) {
+    // filtering builds
+    if(state && state.filter) {
       Object.filter = (obj, predicate) => 
         Object.keys(obj)
           .filter(key => predicate(obj[key]))
           .reduce((res, key) => (res[key] = obj[key], res), {});
 
-      builds = Object.filter(builds, this.filterCriteria(state.build_filter));
+      builds = Object.filter(builds, this.filterCriteria());
     }
 
     function buildItem(number) {
@@ -164,23 +178,14 @@ class Content extends React.Component {
       );
     }
 
-    // displaying tag filter box if suggestions are present i.e. there are builds 
-    function filterBox(suggestions, callback) {
-      return (
-        <div>
-          <Select multi simpleValue 
-            value={state.build_filter}
-            placeholder='Filter build history...' 
-            options={state.build_filter_suggestions} 
-            delimiter=' '
-            onChange={callback} />
-        </div>
-      );
-    }
-
     return (
       <PageContent className="repository history">
-        {filterBox(state.build_filter_suggestions, this.onFilter)}
+        <Select multi simpleValue 
+          value={(state && state.filter) ? state.filter : ''}
+          placeholder='Filter build history...' 
+          options={(state && state.suggestions) ? state.suggestions : []} 
+          delimiter=' '
+          onChange={this.onFilter} />
         {Object.keys(builds).sort((a, b) => {return b - a;}).map(buildItem)}
       </PageContent>
     );
@@ -193,6 +198,6 @@ export default branch((props) => {
   return {
     repository: ['repos', owner, name],
     builds: ['builds', owner, name],
-    state: ['pages', 'repo']
+    state: ['pages', 'repo', owner, name]
   };
 }, Content);
