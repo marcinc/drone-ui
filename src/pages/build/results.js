@@ -106,11 +106,21 @@ export class Results extends React.Component {
   }
 
   handleRestart() {
+    let customParams = [].slice.call(document.getElementsByClassName('custom-param'))
+      .reduce((customParams, cp) => {
+        let kv = cp.children[0].value.split('=');
+        if (kv[0]) {
+          customParams[kv[0]] = kv[1];
+        }
+        return customParams;
+      }, {});
+
     const {repo, build} = this.props;
     events.emit(POST_BUILD, {
       owner: repo.owner,
       name: repo.name,
-      number: build.number
+      number: build.number,
+      params: customParams
     });
   }
 

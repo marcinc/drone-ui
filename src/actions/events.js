@@ -299,8 +299,12 @@ events.on(GET_BUILD, function(event) {
 });
 
 events.on(POST_BUILD, function(event) {
-  const {owner, name, number} = event.data;
-  Request.post(`/api/repos/${owner}/${name}/builds/${number}`)
+  const {owner, name, number, params} = event.data;
+
+  let customParams = Object.keys(params).map(k => 
+    encodeURIComponent(k) + '=' + encodeURIComponent(params[k])).join('&');
+
+  Request.post(`/api/repos/${owner}/${name}/builds/${number}?${customParams}`)
     .set('X-CSRF-TOKEN', token)
     .end((err) => {
       if (err != null) {

@@ -1,3 +1,4 @@
+import {IconButton, Button, Textfield} from 'react-mdl';
 import Humanize from './humanize';
 import {Link} from 'react-router';
 import React from 'react';
@@ -7,6 +8,71 @@ import './build_panel.less';
 
 export default
 class BuildPanel extends React.Component {
+  constructor(props) {
+    super(props);
+
+    this.addInputField = this.addInputField.bind(this);
+
+    this.state = { 
+      customParams: Object.keys(this.props.job.environment).reduce((params, key) => { 
+        let value = this.props.job.environment[key];
+        if (value) { // only show params with value
+          params.push({
+            fieldVal: key + '=' + value,
+            show: true
+          });
+        }
+        return params;
+      }, [])
+    }
+  }
+
+  addInputField() {
+    let customParams = this.state.customParams;
+    customParams.push({fieldVal: '', show: true});
+    this.setState({customParams : customParams});
+  }
+
+  removeInputField(index) {
+    let customParams = this.state.customParams;
+    let key = customParams[index].fieldVal.split('=')[0];
+    if (key) {
+      // uset param value to remove it
+      customParams[index] = {fieldVal: key + '=', show: false} 
+    } else {
+      delete customParams[index];
+    }
+    this.setState({customParams : customParams});
+  }
+
+  handleInputFieldChange(index, event) {
+    let customParams = this.state.customParams;
+    customParams[index].fieldVal = event.target.value;
+    this.setState({customParams: customParams});
+  }
+
+  renderInputs() {
+    return this.state.customParams.reduce((environs, o, i) => {
+      let textFieldClasses = ['custom-param', o.show ? '' : 'hidden'].join(' ');
+      let removeBtnClasses = ['remove-param', o.show ? '' : 'hidden'].join(' ');
+
+      environs.push(
+        <div key={'cp' + i}>
+          <Textfield 
+            key={'input' + i}
+            className={textFieldClasses}
+            label='PARAM=value...' 
+            value={o.fieldVal} 
+            onChange={this.handleInputFieldChange.bind(this, i)}/>
+          <IconButton 
+            name='clear' 
+            key={'delete' + i} 
+            className={removeBtnClasses}
+            onClick={this.removeInputField.bind(this, i)}/>
+        </div>)
+      return environs;
+    }, []);
+  }
 
   renderParentLink(parent) {
     const {repo} = this.props;
@@ -24,15 +90,6 @@ class BuildPanel extends React.Component {
 
     let classes = ['build-panel', job.status];
 
-    let environs = [];
-    if (job && job.environment) {
-      Object.keys(job.environment).map((key) => {
-        environs.push(
-          <code key={key}>{key}={job.environment[key]}</code>
-        );
-      });
-    }
-
     return (
       <div className={classes.join(' ')}>
         <div className="build-panel-detail">
@@ -46,7 +103,11 @@ class BuildPanel extends React.Component {
             </div>
             <div><em>Author:</em> {build.author}</div>
             {this.renderParentLink(build.parent)}
-            <p>{environs}{build.message}</p>
+            <div className="input-group">
+              {this.renderInputs()}
+              <Button ripple onClick={this.addInputField} className="add-param">Add new param</Button>
+            </div>
+            <p>{build.message}</p>
           </div>
           <div>
             <div>
